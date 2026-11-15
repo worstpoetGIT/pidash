@@ -84,12 +84,8 @@ pidash needs a **server to show**: the app is a thin native shell around the das
 2. In your fork go to **Settings, Secrets and variables, Actions, Variables** and add `PIDASH_URL` with your dashboard's address (for example `https://pidash.example.com`).
 3. Run the **Build iOS app** workflow. It makes `pidash-unsigned.ipa` with your address inside.
 
-The iPhone file is **not signed**, because Apple only lets you run signed apps and I'm not paying them for that. You sign it yourself with a sideloading tool and your own free Apple ID. I use [iLoader](https://github.com/nab138/iloader).
+The iPhone file is **not signed**, because Apple only lets you run signed apps and I'm not paying them for that. You sign it yourself with a sideloading tool and your own free Apple ID. I use [AltStore](https://altstore.io)
 
-1. Download `pidash-unsigned.ipa` on a computer.
-2. Open iLoader, sign in with your Apple ID, choose the `.ipa`, and install it to your iPhone.
-3. If iOS asks, trust the app in Settings, General, VPN & Device Management.
-4. A free Apple ID signature lasts **7 days**. After that you do step 2 again, installing over the top with the same Apple ID.
 
 **How I keep it signed.** I don't redo that by hand every week. I run [AltServer](https://altstore.io) on a Raspberry Pi at home, signed in with my Apple ID. Whenever my iPhone is connected to my home network, the server re-signs the app in the background before the 7 days run out. If you don't have a machine that stays on at home, installing over the top again by hand every week is the way.
 
