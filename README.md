@@ -91,6 +91,8 @@ The iPhone file is **not signed**, because Apple only lets you run signed apps a
 3. If iOS asks, trust the app in Settings, General, VPN & Device Management.
 4. A free Apple ID signature lasts **7 days**. After that you do step 2 again, installing over the top with the same Apple ID.
 
+**How I keep it signed.** I don't redo that by hand every week. I run [AltServer](https://altstore.io) on a Raspberry Pi at home, signed in with my Apple ID. Whenever my iPhone is connected to my home network, the server re-signs the app in the background before the 7 days run out. If you don't have a machine that stays on at home, installing over the top again by hand every week is the way.
+
 A free Apple ID also allows only **3 sideloaded apps at once**, so check your count before you install.
 
 If your server sits behind a Cloudflare Access login like mine, the login page opens inside the app the first time. After you sign in, the session stays until it expires.
