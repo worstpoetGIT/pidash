@@ -34,13 +34,13 @@ A county is a plot that goes from an empty lot with a sign (the service is down)
 
 The map is the same Three.js scene as `$?`, with four of its skins, picked from the map button at the top right: **Classic City**, **Lego**, **Japan** (an anime look with cel shading and ink outlines) and **Wireframe**. The button next to it cycles **System, Light and Dark**. Light is all white and Dark is all black, with no borders and no grey fills, because that's how `$?` looks and I wanted the two apps to feel like siblings.
 
-<!-- screenshot: the four maps -->
+<p align="center"><img src="docs/screenshots/maps.jpg" alt="The map picker on each of the four maps, all in Dark mode: Classic City, Lego, Japan and Wireframe" width="760"></p>
 
 ### Stats
 
 The Stats tab is every number behind the buildings, one card per county: CPU and load, memory and swap, each temperature, fan speed, core voltage and whether the Pi has ever undervolted, network rates, disk usage per disk, and the live CPU and RAM of every service.
 
-<!-- screenshot: stats -->
+<p align="center"><img src="docs/screenshots/stats-1.jpg" alt="Stats: uptime, compute and the start of climate" width="190">&nbsp;<img src="docs/screenshots/stats-2.jpg" alt="Stats: climate, network and vault" width="190">&nbsp;<img src="docs/screenshots/stats-3.jpg" alt="Stats: vault, library and lab" width="190">&nbsp;<img src="docs/screenshots/stats-4.jpg" alt="Stats: library, lab and fortress" width="190"></p>
 
 ### Security
 
@@ -58,7 +58,7 @@ The Security tab is the part I care about most. It shows:
   - **fail2ban**, SSH bans
 - **A scan log** of every past run, one dot per scanner.
 
-<!-- screenshot: security -->
+<p align="center"><img src="docs/screenshots/security.jpg" alt="Security: the verdict, what changed since the last scan, and the scanner cards" width="320"></p>
 
 The scanners themselves run on the Pi as root on a systemd timer and write JSON; the app only reads it.
 
