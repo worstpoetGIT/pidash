@@ -1,0 +1,168 @@
+# pidash
+
+*The metal I screwed, which maintains a healthy and sometimes long-distance relationship with my other PCs and network.*
+
+<p align="center"><img src="docs/screenshots/home.jpg" alt="The Pi as a small 3D city on the Wireframe map in Dark mode, with the uptime on top and the tabs at the bottom" width="320"></p>
+
+### App Idea
+
+I run a Raspberry Pi 5 as a small home server. It hosts my photos, my files, my media, my DNS filter, a lab VM and a few other things, and I wanted one place on my phone to see whether it's healthy. Not a wall of graphs: a quick look, and then a way to dig in when something is off.
+
+Most dashboards I tried were either a Grafana panel I would never open, or a page of numbers that told me nothing at a glance. I already had a map idea in my head from another app I'm building, [`$?`](https://github.com/worstpoetGIT/dollar-q), where your spending grows a tiny 3D state. So I thought: what if the Pi was the state? Each part of the machine is a county, and its building grows as the load goes up.
+
+I'm also a cybersecurity person, so the second half of the app is the security posture of the box: what the nightly scanners found, what changed since the last scan, and a way to run a test against my own services by hand. And, like `$?`, I built it because I'm broke: I didn't want to pay Apple $99 a year for a developer account just to put my own dashboard on my own phone, so it's sideloaded.
+
+pidash reads from my own server and shows it. There's no third-party service, no analytics, no ads.
+
+### The map
+
+The home screen is a miniature city that **is** the Pi. It has 7 counties, and each building grows with how hard that part of the machine is working right now:
+
+| County | What it is | What makes it grow |
+|---|---|---|
+| **Compute** | CPU and memory | the busier of CPU % and RAM % |
+| **Climate** | temperatures, fan, core voltage | the hottest sensor |
+| **Network** | the network port and the DNS filter | traffic (on a log scale) |
+| **Vault** | the SD card, the SSD and the HDD | the fullest disk |
+| **Library** | the photo, file and media apps | how many are up, and how busy |
+| **Lab** | the AI coding assistant | how much of its usage limit is spent |
+| **Fortress** | the hacking lab VM | up or down |
+
+A county is a plot that goes from an empty lot with a sign (the service is down) up to a tall building (maxed out), in 14 levels. Tap a building and the camera flies to it and a card opens with the live numbers and bars. The chips at the top filter the map into **Hardware** and **Services**.
+
+<!-- screenshot: a county selected, with the live-details card -->
+
+The map is the same Three.js scene as `$?`, with four of its skins, picked from the map button at the top right: **Classic City**, **Lego**, **Japan** (an anime look with cel shading and ink outlines) and **Wireframe**. The button next to it cycles **System, Light and Dark**. Light is all white and Dark is all black, with no borders and no grey fills, because that's how `$?` looks and I wanted the two apps to feel like siblings.
+
+<!-- screenshot: the four maps -->
+
+### Stats
+
+The Stats tab is every number behind the buildings, one card per county: CPU and load, memory and swap, each temperature, fan speed, core voltage and whether the Pi has ever undervolted, network rates, disk usage per disk, and the live CPU and RAM of every service.
+
+<!-- screenshot: stats -->
+
+### Security
+
+The Security tab is the part I care about most. It shows:
+
+- **A verdict**: *All clear*, *Worth a look* or *Action needed*, from the worst result of any scanner.
+- **Since last scan**: what changed, like *New open port 443/tcp* or *7 security updates are pending (was 4)*.
+- **Seven scanners**, each with a status dot, a headline and a drill-down:
+  - **Trivy**, known CVEs in the container images
+  - **Updates**, pending packages, security updates and kernel
+  - **Lynis**, system hardening index and suggestions
+  - **Nmap**, open ports, with unexpected ones called out
+  - **Nuclei**, web vulnerability templates against each web app, with findings tagged by OWASP Top 10 category
+  - **ClamAV**, malware scan of uploaded files
+  - **fail2ban**, SSH bans
+- **A scan log** of every past run, one dot per scanner.
+
+<!-- screenshot: security -->
+
+The scanners themselves run on the Pi as root on a systemd timer and write JSON; the app only reads it.
+
+**There are no "fix it" buttons, on purpose.** An early version had one-tap fixes, and I took them out: a web button that runs commands as root on the machine that hosts everything is the wrong trade for a dashboard.
+
+**A private console.** Two things *do* act, so they live on a second, private address that only my Tailscale network can reach, never on the internet:
+
+- a **manual pentester**: pick one of my own assets (the Pi, the lab VM, a web app) and a test (ports and services, SSH and TLS audit, or Nuclei web templates), run it, watch the live output and keep the result in history. It's an allowlist of my own targets, with no free-form host.
+- a **CI/CD pipelines** panel that lists the latest GitHub Actions runs of this repo and can start one.
+
+### What's not in the app, on purpose
+
+- No fix or remediation buttons.
+- No accounts of its own. The public site sits behind a Cloudflare Access login, and the app signs in through that.
+- No tracking and no third-party requests from the app. Fonts are bundled.
+- No way to reach the private console from the internet.
+
+### Install
+
+pidash needs a **server to show**: the app is a thin native shell around the dashboard site, so there's nothing to see without the backend behind it (see [How it works](#how-it-works)). Because the address of that server is baked into the app, the file on the [Releases](../../releases) page is built for my own server and is only useful to me. To get your own:
+
+1. Fork this repo.
+2. In your fork go to **Settings, Secrets and variables, Actions, Variables** and add `PIDASH_URL` with your dashboard's address (for example `https://pidash.example.com`).
+3. Run the **Build iOS app** workflow. It makes `pidash-unsigned.ipa` with your address inside.
+
+The iPhone file is **not signed**, because Apple only lets you run signed apps and I'm not paying them for that. You sign it yourself with a sideloading tool and your own free Apple ID. I use [iLoader](https://github.com/nab138/iloader).
+
+1. Download `pidash-unsigned.ipa` on a computer.
+2. Open iLoader, sign in with your Apple ID, choose the `.ipa`, and install it to your iPhone.
+3. If iOS asks, trust the app in Settings, General, VPN & Device Management.
+4. A free Apple ID signature lasts **7 days**. After that you do step 2 again, installing over the top with the same Apple ID.
+
+A free Apple ID also allows only **3 sideloaded apps at once**, so check your count before you install.
+
+If your server sits behind a Cloudflare Access login like mine, the login page opens inside the app the first time. After you sign in, the session stays until it expires.
+
+### Tech Stack
+
+| Part | What I used |
+|---|---|
+| UI | React 19, plain JavaScript (no TypeScript, no router, no state library) |
+| Build | Vite 8 |
+| 3D map | Three.js 0.187, used directly (no React wrapper) |
+| Styling | One CSS file with CSS variables for the themes, fonts bundled with Fontsource (Archivo Black, Inter) |
+| Phone shell | Capacitor 8 for iPhone, loading the dashboard site |
+| Native plugin | Haptics |
+| Private console service | FastAPI and uvicorn, bound to the loopback address |
+| CI | GitHub Actions: a security workflow (gitleaks, `npm audit`, `pip-audit`, Trivy) on every push and weekly, and a macOS runner (`xcodebuild`) that builds the IPA |
+| Target | iOS 15 and up, iPhone only |
+
+The app is about 2,700 lines and the private console service about 250. There is no database: the app keeps one tiny preference object (the map and the appearance) in `localStorage`, and everything else is read live from the server.
+
+### How it works
+
+**Data.** The app polls the server's `/api/stats` every 5 seconds with a 6 second timeout, and marks the Pi offline after 2 failures in a row. Claude usage is polled every 30 seconds and the security report every minute. The endpoints it reads are:
+
+```
+/api/stats                 cpu, mem, disks, fan, power, network, temps, uptime, services[]
+/api/claude-usage          session tokens, burn rate, usage
+/api/security/report       one object per scanner, a summary and the alerts
+/api/security/history      the list of past scan runs
+```
+
+The backend that serves them is a small FastAPI app on the Pi, separate from this repo. It also serves the built site.
+
+**The map.** `src/CityScene.js` is a plain class, React only gives it a `<div>`. It owns the renderer, the camera, `OrbitControls`, a raycaster for tapping counties and the render loop, which stops when you leave the tab. Nothing is loaded from a file: every building, tree, car and person is built in code from boxes, cylinders and cones, and the only textures are drawn on a canvas.
+
+**Counties and levels.** `buildCounties()` in `src/data.js` turns the live stats into 7 county objects: a name, a building style, a colour, the rows shown in the card and a level from 1 to 14. A level is `1 + load% × 13 / 100`. A county with nothing running (the service is down) is drawn as an empty plot. When a level goes up, the scene builds only the new pieces, one after another, with a crane on the lot.
+
+**Map skins.** `src/maps.js` holds a recipe for each map: palette, buildings, vehicles, people, trees, lighting and fog. Changing the map throws away the world group and builds it again from the new recipe, which is why everything changes together.
+
+**The private console.** `secops/` is a small FastAPI service on the loopback address, reachable only through a proxy on my Tailscale network. It's deliberately boring:
+
+- Every action is a fixed id from a fixed table. Nothing typed in the UI is ever put into a command line.
+- Pentest targets come from a local config file that isn't in the repo (`secops/targets.example.json` shows the format), so there's no free-form host and no ranges.
+- Every `POST` needs a custom header, an allowed `Host` and a same-origin `Origin`, which stops a web page from firing requests at it.
+- One job at a time, hard timeouts, capped output, and an audit log of every run.
+
+**The phone app.** Capacitor loads the dashboard site in a full-screen web view with no scrolling or link previews, locks it to portrait, and keeps the Cloudflare login pages inside the app. Haptics use Capacitor's native plugin when it's there and fall back to the single tick iOS Safari allows. The server address isn't in the repo: the workflow puts it in at build time from the `PIDASH_URL` variable.
+
+### Project layout
+
+```
+src/
+  main.jsx            entry point, crash guard
+  App.jsx             tabs and screens
+  data.js             polling, and the 7 counties built from the live stats
+  store.js            the two saved preferences
+  CityScene.js        the 3D map (Three.js)
+  maps.js             the map skins
+  haptics.js          native and web haptics
+  components/         Home, Stats, Security, SecOps, Icon
+secops/               the private console service
+ios/                  Capacitor iOS project
+build-ios.sh          unsigned IPA build for a Mac
+scripts/              deploy the built site to the server
+.github/workflows/    security checks and the IPA build
+docs/screenshots/     the pictures in this README
+```
+
+### Testing
+
+There is no automated test suite yet. I check things in a headless browser at phone size and on my own iPhone. The security workflow runs on every push and checks for committed secrets, vulnerable dependencies and known CVEs in the repo.
+
+### License
+
+MIT, see [LICENSE](LICENSE).

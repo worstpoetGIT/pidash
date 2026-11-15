@@ -1,0 +1,23 @@
+{
+  "hosts": {
+    "pi-lan": {
+      "label": "Pi · LAN address",
+      "address": "192.0.2.10"
+    },
+    "pi-lo": {
+      "label": "Pi · loopback",
+      "address": "127.0.0.1"
+    },
+    "vm": {
+      "label": "Lab VM",
+      "address": "192.0.2.20"
+    },
+    "app": {
+      "label": "Web app",
+      "address": "192.0.2.10",
+      "url": "http://192.0.2.10:8080"
+    }
+  },
+  "host_headers": {},
+  "ssh_tls_ports": "22,80,443"
+}

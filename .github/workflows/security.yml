@@ -1,0 +1,71 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secrets scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (checksum verified)
+        run: |
+          v=8.21.2
+          base=https://github.com/gitleaks/gitleaks/releases/download/v$v
+          curl -sSLO "$base/gitleaks_${v}_linux_x64.tar.gz"
+          curl -sSLO "$base/gitleaks_${v}_checksums.txt"
+          sha256sum --ignore-missing -c "gitleaks_${v}_checksums.txt"
+          tar xzf "gitleaks_${v}_linux_x64.tar.gz" gitleaks
+      - name: Scan the full history
+        run: ./gitleaks detect --source . --redact --no-banner --exit-code 1
+
+  npm-audit:
+    name: Dependencies (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  pip-audit:
+    name: Dependencies (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Audit the secops requirements
+        run: |
+          python -m pip install --quiet pip-audit
+          pip-audit -r secops/requirements.txt
+
+  trivy:
+    name: Filesystem scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Trivy (checksum verified)
+        run: |
+          v=0.76.1
+          base=https://github.com/aquasecurity/trivy/releases/download/v$v
+          curl -sSLO "$base/trivy_${v}_Linux-64bit.tar.gz"
+          curl -sSLO "$base/trivy_${v}_checksums.txt"
+          sha256sum --ignore-missing -c "trivy_${v}_checksums.txt"
+          tar xzf "trivy_${v}_Linux-64bit.tar.gz" trivy
+      - name: Scan the repository
+        run: ./trivy fs --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .

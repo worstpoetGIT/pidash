@@ -1,0 +1,51 @@
+name: Build iOS app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'build-ios.sh'
+      - '.github/workflows/build-ios.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Point the app at your pidash server
+        env:
+          PIDASH_URL: ${{ vars.PIDASH_URL }}
+        run: |
+          test -n "$PIDASH_URL" || { echo "Set the PIDASH_URL repository variable (Settings > Secrets and variables > Actions > Variables)"; exit 1; }
+          host=$(echo "$PIDASH_URL" | sed -E 's|^https?://([^/]+).*|\1|')
+          sed -i "s|https://pidash.example.com|$PIDASH_URL|; s|pidash.example.com|$host|" capacitor.config.json
+      - name: Build the web assets and sync them into the iOS project
+        run: |
+          npx vite build
+          npx cap sync ios
+      - name: Build the unsigned .ipa
+        run: ./build-ios.sh
+      - name: Print the end of the build log on failure
+        if: failure()
+        run: tail -80 build-log.txt || true
+      - name: Collect the IPA
+        run: mkdir out && cp pidash-unsigned.ipa out/pidash-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pidash-ipa
+          path: out/pidash-unsigned.ipa
+          retention-days: 14

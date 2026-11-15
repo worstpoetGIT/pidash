@@ -1,0 +1,19 @@
+{
+  "appId": "win.fridayai.pidash",
+  "appName": "pidash",
+  "webDir": "dist",
+  "server": {
+    "url": "https://pidash.example.com",
+    "cleartext": false,
+    "allowNavigation": [
+      "pidash.example.com",
+      "*.cloudflareaccess.com"
+    ]
+  },
+  "ios": {
+    "contentInset": "never",
+    "scrollEnabled": false,
+    "allowsLinkPreview": false,
+    "webContentsDebuggingEnabled": false
+  }
+}
