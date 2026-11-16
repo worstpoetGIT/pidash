@@ -8,11 +8,11 @@ export function Meter({ value, color }) {
 
 // All hardware + service numbers, one card per county.
 export default function Stats({ pi }) {
-  const { counties, stats, offline } = pi
+  const { counties, stats, offline, error } = pi
   return (
     <div className="page">
       <h1 className="title">Stats</h1>
-      {offline && <div className="notice">Pi unreachable. Showing the last values.</div>}
+      {offline && <div className="notice">Pi unreachable. Showing the last values.{error ? <div style={{ fontWeight: 400, fontSize: 13.5, marginTop: 4, overflowWrap: 'anywhere' }}>{error}</div> : null}</div>}
       {!stats && !offline && <div className="muted" style={{ padding: 20 }}>Loading…</div>}
       {stats && (
         <div className="card fade-up" style={{ marginBottom: 14 }}>

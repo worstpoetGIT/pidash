@@ -30,6 +30,7 @@ export function usePi() {
   const [stats, setStats] = useState(null)
   const [claude, setClaude] = useState(null)
   const [offline, setOffline] = useState(false)
+  const [error, setError] = useState('')
   const fails = useRef(0)
 
   useEffect(() => {
@@ -40,8 +41,9 @@ export function usePi() {
         if (!alive) return
         fails.current = 0
         setStats(s); setOffline(false)
-      } catch {
+      } catch (e) {
         if (!alive) return
+        setError(String(e?.message || e).slice(0, 160))
         if (++fails.current >= 2) setOffline(true)
       }
     }
@@ -55,7 +57,7 @@ export function usePi() {
   }, [])
 
   const counties = useMemo(() => buildCounties(stats, claude), [stats, claude])
-  return { stats, claude, offline, counties }
+  return { stats, claude, offline, error, counties }
 }
 
 export async function post(path) {
@@ -70,19 +72,20 @@ export function useSecurity() {
   const [report, setReport] = useState(null)
   const [history, setHistory] = useState(null)
   const [err, setErr] = useState(false)
+  const [errMsg, setErrMsg] = useState('')
   useEffect(() => {
     let alive = true
     const load = async () => {
       try {
         const [r, h] = await Promise.all([get('/api/security/report', 15000), get('/api/security/history', 15000)])
         if (alive) { setReport(r); setHistory(h?.runs || []); setErr(false) }
-      } catch { if (alive) setErr(true) }
+      } catch (e) { if (alive) { setErr(true); setErrMsg(String(e?.message || e).slice(0, 160)) } }
     }
     load()
     const t = setInterval(load, 60000)
     return () => { alive = false; clearInterval(t) }
   }, [])
-  return { report, history, err }
+  return { report, history, err, errMsg }
 }
 
 export const fmtBytes = (n) => {

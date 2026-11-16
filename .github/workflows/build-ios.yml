@@ -33,6 +33,16 @@ jobs:
           test -n "$PIDASH_API_URL" || { echo "Add the PIDASH_API_URL repository secret (Settings > Secrets and variables > Actions > Secrets)"; exit 1; }
           VITE_API_BASE="$PIDASH_API_URL" npx vite build
           npx cap sync ios
+      - name: Allow plain HTTP to the API address only
+        env:
+          PIDASH_API_URL: ${{ secrets.PIDASH_API_URL }}
+        run: |
+          host=$(echo "$PIDASH_API_URL" | sed -E 's|^https?://([^/:]+).*|\1|')
+          P=ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$P"
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSExceptionDomains dict" "$P"
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSExceptionDomains:$host dict" "$P"
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSExceptionDomains:$host:NSExceptionAllowsInsecureHTTPLoads bool true" "$P"
       - name: Build the unsigned .ipa
         run: ./build-ios.sh
       - name: Print the end of the build log on failure

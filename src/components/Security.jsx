@@ -72,7 +72,7 @@ function Detail({ id, r }) {
 }
 
 export default function Security() {
-  const { report, history, err } = useSecurity()
+  const { report, history, err, errMsg } = useSecurity()
   const [open, setOpen] = useState(null)
   const tools = report?.summary?.tools || {}
   const worst = Object.values(tools).reduce((a, t) => (RANK[t.status] > RANK[a] ? t.status : a), 'ok')
@@ -81,7 +81,7 @@ export default function Security() {
   return (
     <div className="page">
       <h1 className="title">Security</h1>
-      {err && !report && <div className="notice">Couldn't load the security report.</div>}
+      {err && !report && <div className="notice">Couldn't load the security report.{errMsg ? <div style={{ fontWeight: 400, fontSize: 13.5, marginTop: 4, overflowWrap: 'anywhere' }}>{errMsg}</div> : null}</div>}
       {!report && !err && <div className="muted" style={{ padding: 20 }}>Loading…</div>}
       {report && (<>
         <div className="card fade-up" style={{ marginBottom: 14 }}>
