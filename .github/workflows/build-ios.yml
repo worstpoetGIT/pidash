@@ -26,17 +26,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Point the app at your pidash server
-        env:
-          PIDASH_URL: ${{ vars.PIDASH_URL }}
-        run: |
-          test -n "$PIDASH_URL" || { echo "Set the PIDASH_URL repository variable (Settings > Secrets and variables > Actions > Variables)"; exit 1; }
-          host=$(echo "$PIDASH_URL" | sed -E 's|^https?://([^/]+).*|\1|')
-          sed -i.bak "s|https://pidash.example.com|$PIDASH_URL|; s|pidash.example.com|$host|" capacitor.config.json
-          rm -f capacitor.config.json.bak
       - name: Build the web assets and sync them into the iOS project
+        env:
+          PIDASH_API_URL: ${{ secrets.PIDASH_API_URL }}
         run: |
-          npx vite build
+          test -n "$PIDASH_API_URL" || { echo "Add the PIDASH_API_URL repository secret (Settings > Secrets and variables > Actions > Secrets)"; exit 1; }
+          VITE_API_BASE="$PIDASH_API_URL" npx vite build
           npx cap sync ios
       - name: Build the unsigned .ipa
         run: ./build-ios.sh

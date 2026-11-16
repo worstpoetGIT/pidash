@@ -1,10 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { CapacitorHttp } from '@capacitor/core'
 
 // Live Pi data: /api/stats every 5 s (6 s timeout, offline after 2 failures — same rule as the web and RN dashboards),
 // Claude usage every 30 s.
 const clamp = (x, a = 0, b = 100) => Math.max(a, Math.min(b, x))
 
+// In the phone app the UI is bundled, so the API lives at an absolute address set at build time (VITE_API_BASE).
+// On the website it stays empty and every path is relative to the page.
+const BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
+export const NATIVE_API = BASE !== ''
+
 async function get(path, ms = 6000) {
+  if (NATIVE_API) {
+    // Native request: no CORS, real timeouts. WebKit's fetch cannot do plain-http calls to another origin.
+    const r = await CapacitorHttp.get({ url: BASE + path, readTimeout: ms, connectTimeout: ms, headers: { 'Cache-Control': 'no-store' } })
+    if (r.status < 200 || r.status >= 300) throw new Error(String(r.status))
+    return typeof r.data === 'string' ? JSON.parse(r.data) : r.data
+  }
   const ac = new AbortController()
   const t = setTimeout(() => ac.abort(), ms)
   try {
@@ -47,7 +59,7 @@ export function usePi() {
 }
 
 export async function post(path) {
-  const r = await fetch(path, { method: 'POST', headers: { 'X-Secops': '1' } })
+  const r = await fetch(BASE + path, { method: 'POST', headers: { 'X-Secops': '1' } })
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(j.detail || j.error || 'Request failed (' + r.status + ')')
   return j

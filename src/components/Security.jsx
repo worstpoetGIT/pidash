@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Icon from './Icon.jsx'
-import { useSecurity } from '../data.js'
+import { useSecurity, NATIVE_API } from '../data.js'
 import { haptic } from '../haptics.js'
 import { Pentest, Pipelines } from './SecOps.jsx'
 
@@ -133,8 +133,7 @@ export default function Security() {
           {history && history.length === 0 && <div className="muted">No scans recorded yet.</div>}
         </div>
 
-        <Pentest />
-        <Pipelines />
+        {!NATIVE_API && <><Pentest /><Pipelines /></>}
       </>)}
     </div>
   )
