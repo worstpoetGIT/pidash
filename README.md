@@ -72,26 +72,25 @@ The scanners themselves run on the Pi as root on a systemd timer and write JSON;
 ### What's not in the app, on purpose
 
 - No fix or remediation buttons.
-- No accounts of its own. The public site sits behind a Cloudflare Access login, and the app signs in through that.
+- No accounts of its own. The phone app reads the Pi over Tailscale, so there's no login. The website, which I only use on a computer, sits behind a Cloudflare Access login.
 - No tracking and no third-party requests from the app. Fonts are bundled.
 - No way to reach the private console from the internet.
 
 ### Install
 
-pidash needs a **server to show**: the app is a thin native shell around the dashboard site, so there's nothing to see without the backend behind it (see [How it works](#how-it-works)). Because the address of that server is baked into the app, the file on the [Releases](../../releases) page is built for my own server and is only useful to me. To get your own:
+pidash needs a **server to show**: the app has no data of its own, so there's nothing to see without the backend behind it (see [How it works](#how-it-works)). The address of that server is baked into the app when it's built, so the file on the [Releases](../../releases) page (v0.1.0, an early build that loads my own site) is only useful to me. To get your own:
 
 1. Fork this repo.
-2. In your fork go to **Settings, Secrets and variables, Actions, Variables** and add `PIDASH_URL` with your dashboard's address (for example `https://pidash.example.com`).
+2. In your fork go to **Settings, Secrets and variables, Actions, Secrets** and add `PIDASH_API_URL`, the address of your Pi's API, for example `http://100.x.y.z:5191`. Use a secret, not a variable, so the address stays out of the public build logs.
 3. Run the **Build iOS app** workflow. It makes `pidash-unsigned.ipa` with your address inside.
 
-The iPhone file is **not signed**, because Apple only lets you run signed apps and I'm not paying them for that. You sign it yourself with a sideloading tool and your own free Apple ID. I use [AltStore](https://altstore.io)
+That address has to answer the read-only `/api` paths listed under [How it works](#how-it-works). I use the Pi's Tailscale address with a small proxy in front of the API, so the phone needs Tailscale turned on to see anything.
 
+The iPhone file is **not signed**, because Apple only lets you run signed apps and I'm not paying them for that. You sign it yourself with a sideloading tool and your own free Apple ID. I use [AltStore](https://altstore.io).
 
-**How I keep it signed.** I don't redo that by hand every week. I run [AltServer](https://altstore.io) on a Raspberry Pi at home, signed in with my Apple ID. Whenever my iPhone is connected to my home network, the server re-signs the app in the background before the 7 days run out. If you don't have a machine that stays on at home, installing over the top again by hand every week is the way.
+**How I keep it signed.** A free Apple ID signature lasts **7 days**, and I don't want to redo the install by hand every week. I run [AltServer](https://altstore.io) on a Raspberry Pi at home, signed in with my Apple ID. Whenever my iPhone is connected to my home network, the server re-signs the app in the background before the 7 days run out. If you don't have a machine that stays on at home, installing over the top again by hand every week is the way.
 
 A free Apple ID also allows only **3 sideloaded apps at once**, so check your count before you install.
-
-If your server sits behind a Cloudflare Access login like mine, the login page opens inside the app the first time. After you sign in, the session stays until it expires.
 
 ### Tech Stack
 
@@ -101,7 +100,7 @@ If your server sits behind a Cloudflare Access login like mine, the login page o
 | Build | Vite 8 |
 | 3D map | Three.js 0.187, used directly (no React wrapper) |
 | Styling | One CSS file with CSS variables for the themes, fonts bundled with Fontsource (Archivo Black, Inter) |
-| Phone shell | Capacitor 8 for iPhone, loading the dashboard site |
+| Phone shell | Capacitor 8 for iPhone, with the UI bundled in and native HTTP calls to the Pi |
 | Native plugin | Haptics |
 | Private console service | FastAPI and uvicorn, bound to the loopback address |
 | CI | GitHub Actions: a security workflow (gitleaks, `npm audit`, `pip-audit`, Trivy) on every push and weekly, and a macOS runner (`xcodebuild`) that builds the IPA |
@@ -120,7 +119,7 @@ The app is about 2,700 lines and the private console service about 250. There is
 /api/security/history      the list of past scan runs
 ```
 
-The backend that serves them is a small FastAPI app on the Pi, separate from this repo. It also serves the built site.
+The backend that serves them is a small FastAPI app on the Pi, separate from this repo. It also serves the built website. For the phone, a small proxy on the Pi's Tailscale address forwards only those read-only `GET` paths, so nothing that changes the Pi is reachable from the app.
 
 **The map.** `src/CityScene.js` is a plain class, React only gives it a `<div>`. It owns the renderer, the camera, `OrbitControls`, a raycaster for tapping counties and the render loop, which stops when you leave the tab. Nothing is loaded from a file: every building, tree, car and person is built in code from boxes, cylinders and cones, and the only textures are drawn on a canvas.
 
@@ -135,7 +134,7 @@ The backend that serves them is a small FastAPI app on the Pi, separate from thi
 - Every `POST` needs a custom header, an allowed `Host` and a same-origin `Origin`, which stops a web page from firing requests at it.
 - One job at a time, hard timeouts, capped output, and an audit log of every run.
 
-**The phone app.** Capacitor loads the dashboard site in a full-screen web view with no scrolling or link previews, locks it to portrait, and keeps the Cloudflare login pages inside the app. Haptics use Capacitor's native plugin when it's there and fall back to the single tick iOS Safari allows. The server address isn't in the repo: the workflow puts it in at build time from the `PIDASH_URL` variable.
+**The phone app.** Capacitor wraps the built UI inside the app, in a full-screen web view with no scrolling or link previews, locked to portrait. The data calls don't go through the web view's `fetch`: they use Capacitor's native HTTP, which has no cross-origin rules and real timeouts. The server address isn't in the repo: the workflow passes it to the build from the `PIDASH_API_URL` secret. Haptics use Capacitor's native plugin when it's there and fall back to the single tick iOS Safari allows. In the phone build the Pentest and Pipelines panels are hidden, because they belong to the private console.
 
 ### Project layout
 
@@ -152,7 +151,7 @@ src/
 secops/               the private console service
 ios/                  Capacitor iOS project
 build-ios.sh          unsigned IPA build for a Mac
-scripts/              deploy the built site to the server
+scripts/              deploy the built website to the server
 .github/workflows/    security checks and the IPA build
 docs/screenshots/     the pictures in this README
 ```
