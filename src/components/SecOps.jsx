@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from './Icon.jsx'
 import { getJson, post } from '../data.js'
 import { haptic } from '../haptics.js'
@@ -82,10 +83,10 @@ export function Fixes({ onChanged }) {
       {err && !plan && <div style={{ color: 'var(--red)', fontWeight: 600, marginTop: 8 }}>{err}</div>}
     </div>
 
-    {plan && (
+    {plan && createPortal(
       <>
-        <div className="map-scrim" onClick={() => !jobId && close()} />
-        <div className="sheet fade-up">
+        <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.45)' }} onClick={() => !jobId && close()} />
+        <div className="sheet fade-up" style={{ zIndex: 81 }}>
           <div className="row" style={{ marginBottom: 10 }}>
             <b className="sp display" style={{ fontSize: 22 }}>{plan.fix.title}</b>
             <button className="x-btn" onClick={close} aria-label="Close"><Icon name="x" size={16} /></button>
@@ -105,7 +106,7 @@ export function Fixes({ onChanged }) {
           </>) : <JobLog id={jobId} onDone={() => { haptic('light'); load(); onChanged?.() }} />}
         </div>
       </>
-    )}
+    , document.body)}
   </>)
 }
 
