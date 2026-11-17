@@ -62,19 +62,19 @@ The Security tab is the part I care about most. It shows:
 
 The scanners themselves run on the Pi as root on a systemd timer and write JSON; the app only reads it.
 
-**There are no "fix it" buttons, on purpose.** An early version had one-tap fixes, and I took them out: a web button that runs commands as root on the machine that hosts everything is the wrong trade for a dashboard.
+**One-tap fixes.** At the top of the Security tab there is a short list of things I can fix from the phone: install the pending security updates, restart the scan timer, run all scans now. A fix is never a single blind tap. Tapping **Fix** opens a sheet with the exact commands it will run and, for updates, an `apt` dry run. Only **Apply** runs anything, and the output streams live. The update list is read from `apt` at that moment, not from the last scan, and packages that could cut my own connection or take everything down (Docker, k3s, Tailscale, the kernel, OpenSSH, libc) are held back for me to do by hand. Container CVEs and Lynis hardening items are not one-tap on purpose, because updating images can break the apps.
 
-**A private console.** Two things *do* act, so they live on a second, private address that only my Tailscale network can reach, never on the internet:
+**A private console.** Two more things act on the Pi, so they stay on the private Tailscale address and are not in the phone app:
 
 - a **manual pentester**: pick one of my own assets (the Pi, the lab VM, a web app) and a test (ports and services, SSH and TLS audit, or Nuclei web templates), run it, watch the live output and keep the result in history. It's an allowlist of my own targets, with no free-form host.
 - a **CI/CD pipelines** panel that lists the latest GitHub Actions runs of this repo and can start one.
 
 ### What's not in the app, on purpose
 
-- No fix or remediation buttons.
+- No fix that runs without showing its commands first.
 - No accounts of its own. The phone app reads the Pi over Tailscale, so there's no login. The website, which I only use on a computer, sits behind a Cloudflare Access login.
 - No tracking and no third-party requests from the app. Fonts are bundled.
-- No way to reach the private console from the internet.
+- No way to reach the fixes, the pentester or the pipelines from the internet. They only answer on my Tailscale network.
 
 ### Install
 
@@ -129,12 +129,13 @@ The backend that serves them is a small FastAPI app on the Pi, separate from thi
 
 **The private console.** `secops/` is a small FastAPI service on the loopback address, reachable only through a proxy on my Tailscale network. It's deliberately boring:
 
-- Every action is a fixed id from a fixed table. Nothing typed in the UI is ever put into a command line.
+- Every action is a fixed id from a fixed table. Nothing typed in the UI is ever put into a command line. The only values that reach a command are package names, which come from `apt` itself, match a strict pattern and are checked against the hold list.
+- Fixes are two steps: a plan, which shows the commands and a dry run, then an apply that needs the plan's id and expires after 5 minutes. They run through `sudo`, so this service can change the Pi. That's why it only listens on the loopback address, behind a proxy that only my Tailscale network can reach.
 - Pentest targets come from a local config file that isn't in the repo (`secops/targets.example.json` shows the format), so there's no free-form host and no ranges.
 - Every `POST` needs a custom header, an allowed `Host` and a same-origin `Origin`, which stops a web page from firing requests at it.
 - One job at a time, hard timeouts, capped output, and an audit log of every run.
 
-**The phone app.** Capacitor wraps the built UI inside the app, in a full-screen web view with no scrolling or link previews, locked to portrait. The data calls don't go through the web view's `fetch`: they use Capacitor's native HTTP, which has no cross-origin rules and real timeouts. The server address isn't in the repo: the workflow passes it to the build from the `PIDASH_API_URL` secret. Haptics use Capacitor's native plugin when it's there and fall back to the single tick iOS Safari allows. In the phone build the Pentest and Pipelines panels are hidden, because they belong to the private console.
+**The phone app.** Capacitor wraps the built UI inside the app, in a full-screen web view with no scrolling or link previews, locked to portrait. The data calls don't go through the web view's `fetch`: they use Capacitor's native HTTP, which has no cross-origin rules and real timeouts. The server address isn't in the repo: the workflow passes it to the build from the `PIDASH_API_URL` secret. Haptics use Capacitor's native plugin when it's there and fall back to the single tick iOS Safari allows. In the phone build the Pentest and Pipelines panels are hidden, because they belong to the private console. The app is also in a minimal mode: the iOS status bar is hidden.
 
 ### Project layout
 

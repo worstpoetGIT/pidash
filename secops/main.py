@@ -1,8 +1,10 @@
-"""pidash secops: a manual pentester and CI/CD pipeline control for Boss's own Pi.
+"""pidash secops: one-tap fixes, a manual pentester and CI/CD pipeline control for Boss's own Pi.
 
 Design rules (this service can run commands, so it is deliberately boring):
   * Binds to 127.0.0.1 only; the only way in is the Tailscale-only preview proxy.
-  * Every action is a fixed id from a fixed table. Nothing typed in the UI is ever put into a command line.
+  * Every action is a fixed id from a fixed table. Nothing typed in the UI is ever put into a command line,
+    except package names that came from the scanner's own JSON AND match a strict regex AND are not on the hold list.
+  * Fixes are two-step: plan (shows the exact commands + a dry run) then apply (needs the plan id, 5-minute expiry).
   * Pentest targets come from a fixed list of Boss's own assets. No free-form host, no ranges.
   * POSTs need the X-Secops header, a Host on the allowlist and a same-origin Origin (blocks cross-site forms).
   * One job at a time, hard timeouts, output capped, every apply/run written to an audit log.
@@ -140,6 +142,83 @@ def status():
     cur = JOBS.get(ACTIVE["id"]) if ACTIVE["id"] else None
     return {"scan_timer": timer.strip(), "scanning": scan.strip() in ("active", "activating"),
             "job": pub(cur, 5) if cur and cur["status"] == "running" else None}
+
+
+# ───────────────────────── one-tap fixes ─────────────────────────
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9.+-]{0,80}$")
+# restarting these from a web button could cut the connection or take every service down; they stay manual
+HELD_RE = re.compile(r"^(docker|containerd|runc|tailscale|k3s|cloudflared|linux-image|linux-headers|raspberrypi-kernel|openssh|libc6)")
+PLANS = {}
+
+
+def update_names():
+    """Security updates pending right now, read live from apt (not from the scanner's possibly stale JSON)."""
+    rc, out = sh(["apt", "list", "--upgradable"], 40)
+    names = []
+    for ln in out.splitlines():
+        if "-security" in ln and "/" in ln:
+            n = ln.split("/", 1)[0]
+            if isinstance(n, str) and NAME_RE.match(n) and n not in names:
+                names.append(n)
+    return [n for n in names if not HELD_RE.match(n)], [n for n in names if HELD_RE.match(n)]
+
+
+def list_fixes():
+    out = []
+    ok, held = update_names()
+    if ok:
+        out.append({"id": "apt-security", "card": "updates", "risk": "low",
+                    "title": f"Install {len(ok)} security update{'s' if len(ok) != 1 else ''}",
+                    "why": "Patches known CVEs in installed packages. Services keep running; nothing reboots.",
+                    "packages": ok, "held": held})
+    _, t = sh(["systemctl", "is-active", SCAN_TIMER], 5)
+    if t.strip() != "active":
+        out.append({"id": "scan-timer", "card": "scan", "risk": "low", "title": "Restart the nightly scans",
+                    "why": "The scan timer has been stopped, so findings are going stale."})
+    out.append({"id": "rescan", "card": "scan", "risk": "low", "title": "Run all scans now",
+                "why": "Refreshes every scanner (about 20 to 25 minutes on the Pi)."})
+    return out
+
+
+@app.get("/secops/fixes")
+def fixes():
+    return {"fixes": list_fixes()}
+
+
+@app.post("/secops/fix/plan/{fid}")
+async def fix_plan(fid: str):
+    avail = {f["id"]: f for f in list_fixes()}
+    if fid not in avail:
+        raise HTTPException(404, "that fix is not available")
+    sim = []
+    if fid == "apt-security":
+        pk = avail[fid]["packages"]
+        argvs = [["sudo", "-n", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "--only-upgrade", *pk]]
+        rc, out = sh(["apt-get", "-s", "install", "--only-upgrade", *pk], 60)
+        sim = [ln for ln in out.splitlines() if ln.startswith(("Inst ", "Remv "))][:25] or out.splitlines()[-5:]
+    elif fid == "scan-timer":
+        argvs = [["sudo", "-n", "systemctl", "enable", "--now", SCAN_TIMER]]
+    elif fid == "rescan":
+        argvs = [["sudo", "-n", "systemctl", "start", "--no-block", SCAN_UNIT]]
+    pid = secrets.token_hex(8)
+    PLANS[pid] = {"fid": fid, "argvs": argvs, "exp": time.time() + 300}
+    for k in [k for k, v in PLANS.items() if v["exp"] < time.time()]:
+        PLANS.pop(k, None)
+    return {"plan_id": pid, "fix": avail[fid], "commands": [" ".join(a) for a in argvs], "dry_run": sim}
+
+
+@app.post("/secops/fix/apply/{pid}")
+async def fix_apply(pid: str):
+    plan = PLANS.pop(pid, None)
+    if not plan or plan["exp"] < time.time():
+        raise HTTPException(410, "plan expired, request a new one")
+    title = {"apt-security": "Install security updates", "scan-timer": "Restart nightly scans", "rescan": "Run all scans now"}[plan["fid"]]
+    if plan["fid"] == "apt-security":
+        rc, lock = sh(["fuser", "/var/lib/dpkg/lock-frontend"], 5)
+        if rc == 0:
+            raise HTTPException(409, "apt is busy right now")
+    job = start_job("fix:" + plan["fid"], title, plan["argvs"], 900)
+    return pub(job)
 
 
 # ───────────────────────── manual pentester (own assets only) ─────────────────────────

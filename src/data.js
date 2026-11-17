@@ -61,7 +61,13 @@ export function usePi() {
 }
 
 export async function post(path) {
-  const r = await fetch(BASE + path, { method: 'POST', headers: { 'X-Secops': '1' } })
+  if (NATIVE_API) {
+    const r = await CapacitorHttp.post({ url: BASE + path, headers: { 'X-Secops': '1' }, readTimeout: 90000, connectTimeout: 10000 })
+    const j = typeof r.data === 'string' ? (() => { try { return JSON.parse(r.data) } catch { return {} } })() : (r.data || {})
+    if (r.status < 200 || r.status >= 300) throw new Error(j.detail || j.error || 'Request failed (' + r.status + ')')
+    return j
+  }
+  const r = await fetch(path, { method: 'POST', headers: { 'X-Secops': '1' } })
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(j.detail || j.error || 'Request failed (' + r.status + ')')
   return j

@@ -41,6 +41,74 @@ function JobLog({ id, onDone }) {
   )
 }
 
+// ───────────── one-tap fixes ─────────────
+export function Fixes({ onChanged }) {
+  const [fixes, setFixes] = useState(null)
+  const [plan, setPlan] = useState(null)
+  const [jobId, setJobId] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const load = useCallback(async () => { try { setFixes((await getJson('/secops/fixes')).fixes) } catch { setFixes([]) } }, [])
+  useEffect(() => { load() }, [load])
+
+  const ask = async (f) => {
+    haptic('light'); setErr(null); setBusy(true)
+    try { setPlan(await post('/secops/fix/plan/' + f.id)) } catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+  const apply = async () => {
+    haptic('medium'); setBusy(true); setErr(null)
+    try { const j = await post('/secops/fix/apply/' + plan.plan_id); setJobId(j.id) } catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+  const close = () => { setPlan(null); setJobId(null); setErr(null); load(); onChanged?.() }
+
+  if (!fixes || fixes.length === 0) return null
+  return (<>
+    <div className="label">One-tap fixes</div>
+    <div className="card fade-up" style={{ marginBottom: 14 }}>
+      {fixes.map((f) => (
+        <div key={f.id} className="row" style={{ padding: '8px 0', alignItems: 'flex-start' }}>
+          <div className="sp">
+            <b style={{ fontSize: 18 }}>{f.title}</b>
+            <div className="muted" style={{ fontSize: 14.4, marginTop: 2 }}>{f.why}</div>
+            {f.held?.length > 0 && <div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>Held back for manual update: {f.held.join(', ')}</div>}
+          </div>
+          <button className="mini" style={{ background: 'var(--green)', flex: 'none' }} disabled={busy} onClick={() => ask(f)}>Fix</button>
+        </div>
+      ))}
+      <div className="muted" style={{ fontSize: 13.5, marginTop: 6 }}>Container CVEs (Trivy) and Lynis hardening items are not one-tap: updating images can break services, so they stay manual.</div>
+      {err && !plan && <div style={{ color: 'var(--red)', fontWeight: 600, marginTop: 8 }}>{err}</div>}
+    </div>
+
+    {plan && (
+      <>
+        <div className="map-scrim" onClick={() => !jobId && close()} />
+        <div className="sheet fade-up">
+          <div className="row" style={{ marginBottom: 10 }}>
+            <b className="sp display" style={{ fontSize: 22 }}>{plan.fix.title}</b>
+            <button className="x-btn" onClick={close} aria-label="Close"><Icon name="x" size={16} /></button>
+          </div>
+          {!jobId ? (<>
+            <div className="muted" style={{ fontSize: 14.4, marginBottom: 6 }}>This will run exactly:</div>
+            <pre className="term">{plan.commands.join('\n')}</pre>
+            {plan.dry_run?.length > 0 && (<>
+              <div className="muted" style={{ fontSize: 14.4, margin: '10px 0 6px' }}>Dry run says:</div>
+              <pre className="term">{plan.dry_run.join('\n')}</pre>
+            </>)}
+            {err && <div style={{ color: 'var(--red)', fontWeight: 600, margin: '8px 0' }}>{err}</div>}
+            <div className="row" style={{ marginTop: 14, gap: 10 }}>
+              <button className="btn ghost" onClick={close}>Cancel</button>
+              <button className="btn green" disabled={busy} onClick={apply}>Apply</button>
+            </div>
+          </>) : <JobLog id={jobId} onDone={() => { haptic('light'); load(); onChanged?.() }} />}
+        </div>
+      </>
+    )}
+  </>)
+}
+
 // ───────────── manual pentester ─────────────
 export function Pentest() {
   const [opts, setOpts] = useState(null)

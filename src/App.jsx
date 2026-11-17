@@ -31,6 +31,7 @@ export default function App() {
   return (
     <div className="app">
       <Home s={s} pi={pi} active={tab === 'home'} />
+      {tab !== 'home' && <div className="top-cover" />}
       {tab === 'stats' && <Stats pi={pi} />}
       {tab === 'security' && <Security />}
 

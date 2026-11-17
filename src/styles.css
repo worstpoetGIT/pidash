@@ -220,3 +220,6 @@ a.mini { text-decoration: none; }
 .page .map-scrim { position: fixed; z-index: 55; }
 .sheet { position: fixed; left: 10px; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); z-index: 60; background: var(--surface); border-radius: 28px; padding: 18px; box-shadow: var(--shadow); max-height: 82vh; overflow-y: auto; }
 .mini:disabled { opacity: .4; }
+
+/* minimal mode: status bar hidden; keep scrolled pages from showing through the top inset */
+.top-cover { position: absolute; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 15; pointer-events: none; }

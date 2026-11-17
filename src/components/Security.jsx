@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Icon from './Icon.jsx'
 import { useSecurity, NATIVE_API } from '../data.js'
 import { haptic } from '../haptics.js'
-import { Pentest, Pipelines } from './SecOps.jsx'
+import { Fixes, Pentest, Pipelines } from './SecOps.jsx'
 
 const COL = { ok: 'var(--green)', warn: '#f4a259', crit: 'var(--red)' }
 const RANK = { ok: 0, warn: 1, crit: 2 }
@@ -91,6 +91,8 @@ export default function Security() {
           </div>
           <div className="muted" style={{ fontSize: 14.4, marginTop: 10 }}>Last scan {ago(report.summary.generated_at)}{report.summary.scanning ? ' · scanning now' : ''}</div>
         </div>
+
+        <Fixes />
 
         <div className="label">Since last scan</div>
         <div className="card fade-up" style={{ marginBottom: 14 }}>
