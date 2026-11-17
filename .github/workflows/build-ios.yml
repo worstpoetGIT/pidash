@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - 'ios/**'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'vite.config.js'
       - 'capacitor.config.json'
       - 'package.json'
       - 'package-lock.json'
