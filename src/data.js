@@ -94,6 +94,18 @@ export function useSecurity() {
   return { report, history, err, errMsg }
 }
 
+export function useAltServer() {
+  const [d, setD] = useState(null)
+  useEffect(() => {
+    let alive = true
+    const load = async () => { try { const j = await get('/secops/altserver', 12000); if (alive) setD(j) } catch { if (alive) setD(null) } }
+    load()
+    const t = setInterval(load, 20000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
+  return d
+}
+
 export const fmtBytes = (n) => {
   if (n == null) return '—'
   const u = ['B', 'KB', 'MB', 'GB', 'TB']

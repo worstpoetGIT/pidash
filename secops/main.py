@@ -234,7 +234,17 @@ def load_targets():
     return {}, {}, "22,80,443"
 
 
+def load_extra():
+    """Optional local settings (secops/targets.json, never committed): the anisette helper's URL."""
+    for name in ("targets.json", "targets.example.json"):
+        f = BASE / name
+        if f.exists():
+            return json.loads(f.read_text()).get("altserver", {})
+    return {}
+
+
 HOSTS, HOST_HEADERS, SSH_TLS_PORTS = load_targets()
+ALT = load_extra()
 NUCLEI_TAGS = "exposure,misconfig,default-login,cors,xss,sqli,lfi,traversal,ssrf,redirect,xxe,ssti,injection,auth-bypass,unauth,disclosure"
 NUCLEI_BASE = ["docker", "run", "--rm", "--cpus", "1", "--cpu-shares", "128", "--network", "host",
                "-v", "pidash-nuclei-cache:/root/nuclei-templates", "-v", "pidash-nuclei-cache-cfg:/root/.config/nuclei",
@@ -332,3 +342,71 @@ def audit_tail():
         return {"lines": AUDIT.read_text().splitlines()[-40:]}
     except OSError:
         return {"lines": []}
+
+
+# ───────────────────────── AltServer stats (read-only) ─────────────────────────
+_alt = {"t": 0, "v": None}
+
+
+def _cpu_pct(pid, span=0.4):
+    """Current CPU use of a process, sampled from /proc over a short span (100 = one full core)."""
+    def ticks():
+        f = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        return int(f[11]) + int(f[12])
+    try:
+        a = ticks(); time.sleep(span); b = ticks()
+        return round((b - a) / os.sysconf("SC_CLK_TCK") / span * 100, 1)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _unit(name):
+    rc, out = sh(["systemctl", "--user", "show", name, "-p", "ActiveState,MainPID,NRestarts"], 5)
+    d = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
+    pid = int(d.get("MainPID") or 0)
+    up = None
+    if pid:
+        _, e = sh(["ps", "-o", "etimes=", "-p", str(pid)], 5)
+        up = int(e.strip()) if e.strip().isdigit() else None
+    return {"active": d.get("ActiveState") == "active", "pid": pid, "uptime_s": up, "restarts": int(d.get("NRestarts") or 0)}
+
+
+def _jcount(unit_filter, since, pattern, timeout=12):
+    rc, out = sh(["journalctl", *unit_filter, "--since", since, "--no-pager", "-g", pattern, "-o", "cat"], timeout)
+    return len([ln for ln in out.splitlines() if ln.strip()]) if rc in (0, 1) else None
+
+
+@app.get("/secops/altserver")
+def altserver_stats():
+    if time.time() - _alt["t"] < 20 and _alt["v"] is not None:
+        return _alt["v"]
+    uf = ["_SYSTEMD_USER_UNIT=altserver.service"]
+    a = _unit("altserver")
+    cpu = _cpu_pct(a["pid"]) if a["pid"] else None
+    spin = _jcount(uf, "-60s", "of 542393671", 8) or 0
+    last = None
+    rc, out = sh(["journalctl", *uf, "-r", "-n", "1", "-g", "Finished handling request", "--no-pager", "-o", "short-unix"], 8)
+    try:
+        last = int(float(out.split()[0]))
+    except (ValueError, IndexError):
+        pass
+    handled = _jcount(uf, "-24h", "Finished handling request", 12)
+    wd = 0
+    try:
+        wd = sum(1 for ln in Path("/mnt/ssd/altserver/watchdog-restarts.log").read_text().split() if ln.isdigit() and time.time() - int(ln) < 7 * 86400)
+    except OSError:
+        pass
+    anis = None
+    if ALT.get("anisette_url"):
+        rc, out = sh(["curl", "-s", "-o", "/dev/null", "-m", "4", "-w", "%{http_code}", ALT["anisette_url"]], 6)
+        anis = out.strip() == "200"
+    phone = None
+    rc, ts = sh(["tailscale", "status"], 6)
+    for ln in ts.splitlines():
+        if " iphone " in ln or ln.split()[1:2] == ["iphone"]:
+            phone = "home" if "direct 10." in ln or "direct 192.168." in ln else ("away" if ("direct" in ln or "relay" in ln) else "idle")
+    status = "down" if not a["active"] else "stuck" if (spin > 200 or (cpu or 0) > 80) else "ok"
+    v = {"status": status, "altserver": {**a, "cpu_pct": cpu}, "netmuxd": _unit("netmuxd"), "muxfix": _unit("muxfix"),
+         "last_request": last, "handled_24h": handled, "watchdog_restarts_7d": wd, "anisette_ok": anis, "iphone": phone, "now": int(time.time())}
+    _alt.update(t=time.time(), v=v)
+    return v

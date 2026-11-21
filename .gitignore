@@ -8,3 +8,5 @@ ios/App/build/
 ios/DerivedData/
 build-log.txt
 secops/targets.json
+__pycache__/
+*.pyc

@@ -2,10 +2,11 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js'
 import { makeMaps, MAP_LIST } from './maps.js'
+import { newCar, makeTraffic, placeWalkers, spawnCar, stepTraffic } from './traffic.js'
 
-/* ---------- helpers ---------- */
+// helpers
 const shade = (c, a) => new THREE.Color(c).offsetHSL(0, 0, a).getHex()
-// anime look: flat cel-shaded bands instead of smooth shading
+// toon look for the japan map
 let TOON = false
 let WIRE = false
 const toonRamp = (() => {
@@ -93,7 +94,7 @@ function textPlane(p, text, w, h, bg, fg, x, y, z, ry = 0) {
   return m
 }
 
-/* ---------- building styles (footprint ≈ 3.6 x 3.6, base at y=0) ---------- */
+// buildings, about 3.6 x 3.6
 const STYLE_FN = {
   house(g, f, col) {
     const h = 0.8 + 0.75 * f
@@ -238,7 +239,7 @@ function makePerson(rng) {
     bx(leg, 0.13, 0.05, 0.2, 0x2b2b2b, 0, -0.44, 0.03)
     g.add(leg); legs.push(leg)
     const arm = new THREE.Group()
-    arm.position.set(sx * 0.23, 0.82, 0)
+    arm.position.set(sx * 0.2, 0.82, 0)
     sleeves.push(bx(arm, 0.1, 0.26, 0.11, 0xff6b6b, 0, -0.26, 0))
     hands.push(bx(arm, 0.09, 0.1, 0.1, skin, 0, -0.36, 0))
     g.add(arm); arms.push(arm)
@@ -284,7 +285,7 @@ const CELLS = [[4.9, 4.9], [11.1, 4.9], [4.9, 11.1]]
 const DECOR = [11.1, 11.1]
 const TAU = Math.PI * 2
 
-/* ---------- scene ---------- */
+// scene
 export class CityScene {
   constructor(container, { onSelect, onViewChanged } = {}) {
     this.container = container
@@ -351,7 +352,7 @@ export class CityScene {
     this.setMap('city')
   }
 
-  /* --- world --- */
+  // world
   buildWorld() {
     const s = this.world
     const m = this.mats
@@ -366,6 +367,15 @@ export class CityScene {
     for (const [w, d] of [[30, 3], [3, 30]]) {
       const r = mk(s, new THREE.BoxGeometry(w, 0.06, d), C.road, 0, 0.03, 0, false)
       if (w === 3) r.position.y = 0.035
+    }
+    // pavement along the roads. people walk on this and nowhere else
+    const pave = shade(C.pad, -0.14)
+    for (const sg of [-1, 1]) {
+      for (const hf of [-1, 1]) {
+        const mid = hf * (1.5 + 13.5 / 2)
+        mk(s, new THREE.BoxGeometry(13.5, 0.05, 0.92), pave, mid, 0.1, sg * 1.96, false)
+        mk(s, new THREE.BoxGeometry(0.92, 0.05, 13.5), pave, sg * 1.96, 0.102, mid, false)
+      }
     }
     if (T.dashes) {
       const dash = M(C.dash), cross = M(C.cross)
@@ -417,6 +427,7 @@ export class CityScene {
         this.lamp(sg * 1.62, i)
       }
     }
+    this.buildSignals()
     // decor cells
     const [dx, dz] = DECOR
     const cells = [[-dx, -dz], [dx, -dz], [-dx, dz], [dx, dz]]
@@ -499,6 +510,55 @@ export class CityScene {
     for (const sg of [-1, 1]) {
       cyl(s, 0.05, 1.7, 0xcbd5e1, x + sg * 2.0, 0.1, z, 5)
       bx(s, 0.05, 0.6, 0.8, 0xffffff, x + sg * 1.9, 1.5, z)
+    }
+  }
+
+  // one traffic light in the middle of the crossroad, with a head facing every way in.
+  // the middle is the one spot no car or person uses, so it stays in the way of nobody.
+  buildSignals() {
+    const S = this.T.signal
+    const g = new THREE.Group()
+    const H = 2.5
+    if (S.shaft === 'bricks') {
+      for (let i = 0; i < 6; i++) bx(g, 0.3, H / 6, 0.3, S.bricks[i % S.bricks.length], 0, (i * H) / 6, 0)
+    } else cyl(g, S.shaft === 'log' ? 0.11 : 0.07, H, S.pole, 0, 0, 0, S.shaft === 'log' ? 7 : 8)
+    if (S.base) bx(g, 0.26, 0.14, 0.26, S.base, 0, 0, 0)
+    if (S.cap) mk(g, new THREE.SphereGeometry(0.13, 8, 6), S.cap, 0, H + 0.1, 0)
+
+    this.signals = []
+    // which way each head faces, and which road's cars it is for
+    for (const [face, axis] of [[0, 'x'], [Math.PI, 'x'], [-Math.PI / 2, 'z'], [Math.PI / 2, 'z']]) {
+      const head = new THREE.Group()
+      bx(head, 0.1, 0.06, 0.06, S.pole || S.head, 0.1, 1.95, 0) // arm out to the head
+      bx(head, 0.22, 0.8, 0.3, S.head, 0.3, 1.6, 0)
+      if (S.rim) bx(head, 0.02, 0.86, 0.36, S.rim, 0.19, 1.57, 0)
+      if (S.roof) bx(head, 0.3, 0.05, 0.38, S.roof, 0.3, 2.4, 0)
+      const mats = LIT.map((c, i) => {
+        const m = new THREE.MeshBasicMaterial({ color: c })
+        const y = 2.24 - i * 0.24
+        if (S.lamp === 'disc') mk(head, new THREE.CylinderGeometry(0.09, 0.09, 0.05, 10), m, 0.43, y, 0, false).rotation.z = Math.PI / 2
+        else if (S.lamp === 'box') mk(head, new THREE.BoxGeometry(0.05, 0.15, 0.15), m, 0.43, y, 0, false)
+        else mk(head, new THREE.SphereGeometry(0.085, 8, 6), m, 0.43, y, 0, false)
+        return m
+      })
+      head.rotation.y = face
+      g.add(head)
+      this.signals.push({ axis, mats })
+    }
+    g.position.set(0, 0.07, 0)
+    this.world.add(g)
+    this.signalKey = null
+  }
+
+  // red on top, yellow, green below: light up the one that is on
+  paintSignals() {
+    const sig = this.traffic.sig
+    const key = sig.axis + sig.mode
+    if (key === this.signalKey) return
+    this.signalKey = key
+    for (const h of this.signals) {
+      const on = h.axis !== sig.axis || sig.mode === 'red' ? 0 : sig.mode === 'yellow' ? 1 : 2
+      h.mats.forEach((m, i) => m.color.setHex(i === on ? LIT[i] : OFF[i]))
     }
   }
 
@@ -586,12 +646,10 @@ export class CityScene {
   buildWalkers() {
     const rng = this.rng
     const P = this.T.people
-    for (let i = 0; i < 8; i++) {
+    this.walkers = placeWalkers(8, rng)
+    for (const w of this.walkers) {
       const p = makePerson(rng)
-      const axis = i % 2 ? 'x' : 'z'
-      const off = (i % 4 < 2 ? 1 : -1) * (1.85 + (rng() - 0.5) * 0.25)
-      const dir = rng() > 0.5 ? 1 : -1
-      const w = { p, axis, off, dir, t: (rng() - 0.5) * 26, speed: 0.55 + rng() * 0.5, ph: rng() * 6, ci: Math.floor(rng() * 6), pi: Math.floor(rng() * 3) }
+      Object.assign(w, { p, ph: rng() * 6, ci: Math.floor(rng() * 6), pi: Math.floor(rng() * 3) })
       const u = p.userData
       if (P.skin) { u.skin = P.skin; u.head.material.color.set(P.skin); u.hands.forEach((h) => h.material.color.set(P.skin)) }
       const coat = P.coats[w.ci % P.coats.length]
@@ -603,33 +661,25 @@ export class CityScene {
       u.hat.visible = !!P.hat
       if (P.hat) u.hat.material.color.set(P.hats ? P.hats[w.ci % P.hats.length] : P.hat)
       this.world.add(p)
-      this.walkers.push(w)
     }
   }
 
   buildCars() {
-    // pool of vehicles; the spawner sends them across the roads one at a time
+    // pool of vehicles, a few cross the roads at a time
     this.cars = this.T.vehicles().map((car) => {
       car.visible = false
       this.world.add(car)
-      return { car, active: false, axis: 'x', lane: 0, dir: 1, t: 0, base: 2.6, speed: 2.6, ph: this.rng() * 6 }
+      const size = new THREE.Box3().setFromObject(car) // how much room it takes up
+      const hl = Math.max(-size.min.x, size.max.x), hw = Math.max(-size.min.z, size.max.z)
+      return Object.assign(newCar(hl, hw), { car, ph: this.rng() * 6 })
     })
     this.spawnIn = 0.4
     for (let i = 0; i < 3; i++) this.spawnVehicle(true)
   }
 
   spawnVehicle(anywhere = false) {
-    const free = this.cars.filter((c) => !c.active)
-    if (!free.length) return
-    const v = free[Math.floor(this.rng() * free.length)]
-    const axis = this.rng() > 0.5 ? 'x' : 'z'
-    const lane = this.rng() > 0.5 ? 0.75 : -0.75
-    const dir = axis === 'x' ? (lane > 0 ? 1 : -1) : (lane > 0 ? -1 : 1)
-    const t = anywhere ? (this.rng() - 0.5) * 24 : -dir * 16
-    for (const o of this.cars) if (o.active && o.axis === axis && o.lane === lane && Math.abs(o.t - t) < 6) return
-    Object.assign(v, { active: true, axis, lane, dir, t, base: 2.2 + this.rng() * 1.2 })
-    v.speed = v.base
-    v.car.visible = true
+    const c = spawnCar(this.cars, this.rng, anywhere)
+    if (c) c.car.visible = true
   }
 
   buildParticles() {
@@ -662,7 +712,7 @@ export class CityScene {
     this.ringB = mkRing(1.95, 2.05, 0x4cc9f0)
   }
 
-  /* --- public API --- */
+  // public
   setMap(name) {
     if (!MAPS[name]) name = 'city'
     const key = name === 'wire' && !this.dark ? 'wireLight' : name
@@ -685,6 +735,7 @@ export class CityScene {
     this.walkers = []
     this.cars = []
     this.spinners = []
+    this.traffic = makeTraffic()
     this.rng = mulberry(7)
     const C = T.c
     this.mats = { grass: M(C.grass), pad: M(C.pad), round: M(C.round), pine: M(C.pine), blossom: M(C.blossom), water: M(C.water) }
@@ -750,12 +801,12 @@ export class CityScene {
       const look = c.style + '|' + c.color
       const same = lot.built && lot.built.look === look
       if (same && L > lot.built.L) {
-        // an expense was added: construct the new steps one after another
+        // new expense: build the new steps one by one
         const from = lot.target > lot.built.L ? lot.target : lot.built.L
         lot.target = L
         const n = L - lot.built.L
-        lot.stepEvery = Math.min(6, Math.max(1, 0.5 + (L - from) * 0.5 + (from - lot.built.L) * 0.3)) / n
-        if (!(lot.stepAt > performance.now())) lot.stepAt = performance.now() + 250
+        lot.stepEvery = 3 * Math.min(6, Math.max(1, 0.5 + (L - from) * 0.5 + (from - lot.built.L) * 0.3)) / n
+        if (!(lot.stepAt > performance.now())) lot.stepAt = performance.now() + 750
         this.setCrane(lot, true)
       } else if (!same || L !== lot.built.L) {
         lot.target = L
@@ -766,7 +817,7 @@ export class CityScene {
     this.start()
   }
 
-  // what stands on the lot at a given level
+  // what stands on the lot at this level
   plan(L) {
     const p = { found: L >= 1, hut: L === 2, M: L >= 3 ? 1 : 0, extras: L >= 4, A: 0, B: 0, last: 'found' }
     if (L === 2) p.last = 'hut'
@@ -811,7 +862,7 @@ export class CityScene {
     g.parent && g.parent.remove(g)
   }
 
-  // Builds only the pieces that changed since the last level; everything else stays untouched.
+  // only rebuilds the pieces that changed
   rebuildLot(lot, c, L, animate = false) {
     const parts = (lot.parts ||= {})
     const want = {}
@@ -866,7 +917,7 @@ export class CityScene {
       })
       if (lot.dim > 0) for (const mm of mats) mm.color.copy(mm.userData.base).lerp(DIM, lot.dim * 0.78)
       if (animate) {
-        // grow from the height it already had (a new floor rises out of the old roof), or from the ground if new
+        // grow from the current height, or from the ground if new
         const from = old && old.h > 0 ? Math.min(0.97, (old.h * (old.g.scale.y / old.sy)) / hgt) : 0.02
         lot.anims = lot.anims.filter((a) => a.key !== k)
         lot.anims.push({ key: k, g, sy: w.sc[1], from, t: 0 })
@@ -930,7 +981,7 @@ export class CityScene {
     return { x: (v.x * 0.5 + 0.5) * r.width, y: (-v.y * 0.5 + 0.5) * r.height }
   }
 
-  /* --- internals --- */
+  // internals
   flyTo({ x, z, radius, theta, phi }) {
     const off = this.camera.position.clone().sub(this.controls.target)
     const sp = new THREE.Spherical().setFromVector3(off)
@@ -1037,7 +1088,7 @@ export class CityScene {
     const camDist = this.camera.position.distanceTo(this.controls.target)
     if (this.scene.fog) { this.scene.fog.near = camDist - 14; this.scene.fog.far = camDist + 70 }
     for (const lot of this.lots) {
-      // construction: one step at a time until the lot reaches its target level
+      // one step at a time until it reaches the target level
       if (lot.county && lot.built && lot.target > lot.built.L) {
         const now = performance.now()
         if (now >= lot.stepAt) {
@@ -1057,7 +1108,7 @@ export class CityScene {
         if (cu.leaving && cu.grow < 0.02) { this.disposePart(lot.crane); lot.crane = null }
       }
       if (lot.anims && lot.anims.length) {
-        const dur = Math.max(0.35, Math.min(0.9, lot.stepEvery * 1.6))
+        const dur = Math.max(1, Math.min(2.7, lot.stepEvery * 1.6))
         for (const a of lot.anims) {
           a.t = Math.min(1, a.t + dt / dur)
           const e = a.t * a.t * (3 - 2 * a.t) // smooth start and stop, no bounce
@@ -1082,50 +1133,42 @@ export class CityScene {
       this.ringB.scale.setScalar(2 - sc)
     }
 
-    // walkers
+    // the traffic rules decide who goes where, this just moves the models
+    stepTraffic(this.cars, this.walkers, this.traffic, dt)
+    this.paintSignals()
     for (const w of this.walkers) {
-      w.t += w.dir * w.speed * dt
-      if (w.t > 13.2) { w.t = 13.2; w.dir = -1 }
-      if (w.t < -13.2) { w.t = -13.2; w.dir = 1 }
-      w.ph += dt * (4 + w.speed * 6)
-      const sw = Math.sin(w.ph)
+      w.ph += dt * w.speed * 7 // the stride follows how fast they really go, so waiting people stand still
+      const k = Math.min(1, w.speed * 4)
+      const sw = Math.sin(w.ph) * k
       const u = w.p.userData
       u.legs[0].rotation.x = sw * 0.75
       u.legs[1].rotation.x = -sw * 0.75
       u.arms[0].rotation.x = -sw * 0.6
       u.arms[1].rotation.x = sw * 0.6
       u.torso.rotation.y = sw * 0.08
-      const bob = Math.abs(Math.cos(w.ph)) * 0.045
+      const bob = Math.abs(Math.cos(w.ph)) * 0.045 * k
       if (w.axis === 'x') {
-        w.p.position.set(w.t, 0.1 + bob, w.off)
+        w.p.position.set(w.t, 0.1 + bob, w.lat)
         w.p.rotation.y = w.dir > 0 ? Math.PI / 2 : -Math.PI / 2
       } else {
-        w.p.position.set(w.off, 0.1 + bob, w.t)
+        w.p.position.set(w.lat, 0.1 + bob, w.t)
         w.p.rotation.y = w.dir > 0 ? 0 : Math.PI
       }
     }
-    // vehicles: spawn at one end, drive across, leave
+    // vehicles come in one end and leave at the other
     this.spawnIn -= dt
-    if (this.spawnIn <= 0) { this.spawnIn = 1.8 + this.rng() * 2.6; this.spawnVehicle() }
+    if (this.spawnIn <= 0) { this.spawnIn = 2.6 + this.rng() * 3; this.spawnVehicle() }
     for (const c of this.cars) {
+      c.car.visible = c.active
       if (!c.active) continue
-      let sp = c.base
-      for (const o of this.cars) {
-        if (o === c || !o.active || o.axis !== c.axis || o.lane !== c.lane) continue
-        const gap = (o.t - c.t) * c.dir
-        if (gap > 0 && gap < 3.8) sp = Math.min(sp, o.speed * (gap < 2.6 ? 0.8 : 1))
-      }
-      c.speed += (sp - c.speed) * Math.min(1, dt * 4)
-      c.t += c.dir * c.speed * dt
-      if (Math.abs(c.t) > 16.5) { c.active = false; c.car.visible = false; continue }
       const ud = c.car.userData
       const vy = (ud.y ?? 0.08) + (ud.bob ? Math.sin(t * 2.2 + c.ph) * ud.bob : 0)
       if (ud.spin) ud.spin.rotation.z -= (c.speed * dt) / ud.r
       if (c.axis === 'x') {
-        c.car.position.set(c.t, vy, c.lane)
+        c.car.position.set(c.t, vy, c.lat)
         c.car.rotation.y = c.dir > 0 ? 0 : Math.PI
       } else {
-        c.car.position.set(c.lane, vy, c.t)
+        c.car.position.set(c.lat, vy, c.t)
         c.car.rotation.y = c.dir > 0 ? -Math.PI / 2 : Math.PI / 2
       }
     }
@@ -1157,3 +1200,6 @@ export class CityScene {
 }
 
 const DIM = new THREE.Color(0x9a9a98)
+// traffic light colours: red, yellow, green, lit and switched off
+const LIT = [0xff2b2b, 0xffc400, 0x2bff6a]
+const OFF = [0x3a0d0d, 0x3a2e00, 0x0d3a1a]

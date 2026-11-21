@@ -1,5 +1,4 @@
-// Map skins. Each one restyles the whole state: ground, roads, buildings, vehicles, people, trees, sky.
-// MAP_LIST is plain data for the picker UI; makeMaps(h) builds the 3D recipes with the scene helpers.
+// map skins: ground, roads, buildings, vehicles, people, trees and sky for each one
 
 const ALL_MAPS = [
   { id: 'city', name: 'Classic City', sky: ['#bfe3ff', '#eaf6ff'], ground: '#74c44a', road: '#48556b', accent: ['#e5383b', '#3a86ff', '#f4a259'] },
@@ -20,7 +19,7 @@ export function makeMaps(h) {
   const G = () => new THREE.Group()
   const variant = (style) => Math.abs([...String(style)].reduce((a, ch) => a + ch.charCodeAt(0), 0)) % 3
 
-  /* ---------- buildings ---------- */
+  // buildings
   const build = {
     lego(g, f, col, style) {
       const v = variant(style)
@@ -159,7 +158,7 @@ export function makeMaps(h) {
     },
   }
 
-  /* ---------- vehicles ---------- */
+  // vehicles
   const stud = (g, c, x, y, z) => cyl(g, 0.13, 0.08, c, x, y, z, 8)
   const legoCar = (c) => { const g = makeCar(c); stud(g, shade(c, 0.28), -0.25, 0.82, 0); stud(g, shade(c, 0.28), 0.1, 0.82, 0); return g }
   const sub = (c) => {
@@ -292,7 +291,7 @@ export function makeMaps(h) {
     court: () => [ball(), ball(), ball(), makeBus(0xc0392b), makeBus(0x1d3f8a), makeCar(0xffffff), ball()],
   }
 
-  /* ---------- landmarks (replace a decor cell) ---------- */
+  // landmarks (replace a decor cell)
   const land = {
     fuji(s, x, z) {
       bx(s, 4.8, 0.12, 4.8, 0x7fc96a, x, 0.1, z)
@@ -397,6 +396,19 @@ export function makeMaps(h) {
     },
   }
 
+  // the traffic light in the middle of the crossroad. same parts on every map, dressed up differently:
+  // shaft (round / bricks / log), colours, shape of the lamps, a base, a cap on top, a roof over each head, a rim around it
+  const signals = {
+    city: { shaft: 'round', pole: 0x2a2f38, head: 0x1d1f24, lamp: 'ball', base: 0x6b7280 },
+    lego: { shaft: 'bricks', bricks: [0xe3000b, 0xffd500, 0x0057b8, 0x00852b], head: 0xffd500, lamp: 'disc', rim: 0x111111 },
+    japan: { shaft: 'round', pole: 0xc0392b, head: 0xf5f0e6, lamp: 'ball', base: 0x2b2b2b, cap: 0x2b2b2b, roof: 0x2b2b2b },
+    ice: { shaft: 'log', pole: 0x7a5a3a, head: 0xbfe3f5, lamp: 'ball', base: 0xffffff, cap: 0xffffff },
+    wire: { shaft: 'round', pole: 0x0a66c2, head: 0xc2187a, lamp: 'ball', base: 0x0a8f3c },
+    war: { shaft: 'round', pole: 0x4b5320, head: 0x2b2b22, lamp: 'box', base: 0x8a7a55, cap: 0x4b5320, rim: 0x3f4a2a },
+    ocean: { shaft: 'round', pole: 0xff7f6e, head: 0xfff1e6, lamp: 'ball', base: 0xff9f8f, cap: 0x9fe0f5 },
+    court: { shaft: 'round', pole: 0xe8742a, head: 0xffffff, lamp: 'ball', base: 0x1d3f8a, cap: 0xe8742a, rim: 0x1d3f8a },
+  }
+
   const base = {
     c: {
       base: 0xc9a569, base2: 0xa8844f, grass: 0x74c44a, pad: 0xe8e2d4, road: 0x48556b, dash: 0xe5e7eb, cross: 0xf1f5f9,
@@ -408,7 +420,7 @@ export function makeMaps(h) {
     people: { coats: [0xff6b6b, 0xffd93d, 0x4dd0e1, 0xffffff, 0xff9f1c, 0x80ed99], pants: [0x3b5bdb, 0x4a5568, 0xf4a261], hat: 0xe9c46a, shorts: true },
     particle: null, tree: 'std', dashes: true, studs: false, landmarks: {}, build: null, kiosk: null,
   }
-  const T = (id, o) => ({ ...base, ...o, id, c: { ...base.c, ...(o.c || {}) }, vehicles: vehicles[id], build: build[id] || null, kiosk: kiosks[id] || null })
+  const T = (id, o) => ({ ...base, ...o, id, c: { ...base.c, ...(o.c || {}) }, vehicles: vehicles[id], build: build[id] || null, kiosk: kiosks[id] || null, signal: signals[id] })
 
   return {
     city: T('city', {}),

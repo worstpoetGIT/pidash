@@ -19,5 +19,8 @@
     }
   },
   "host_headers": {},
-  "ssh_tls_ports": "22,80,443"
+  "ssh_tls_ports": "22,80,443",
+  "altserver": {
+    "anisette_url": "http://192.0.2.30:6969/"
+  }
 }
